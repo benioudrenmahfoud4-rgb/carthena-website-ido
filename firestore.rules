@@ -1,0 +1,91 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() { 
+      return request.auth != null; 
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == "benioudrenmahfoud4@gmail.com"
+      );
+    }
+
+    function isValidId(id) { 
+      return id is string && id.size() > 0 && id.size() <= 128; 
+    }
+    
+    function incoming() { 
+      return request.resource.data; 
+    }
+    
+    function existing() { 
+      return resource.data; 
+    }
+
+    // Entity validations
+    function isValidProductCreate(data) {
+      return data.keys().hasAll(['name', 'price', 'imageUrl', 'category', 'createdAt', 'updatedAt']) 
+        && data.keys().size() == 6
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.price is number && data.price >= 0
+        && data.imageUrl is string && data.imageUrl.size() <= 2000000
+        && data.category is string && data.category.size() <= 50
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    function isValidProductUpdate(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.price is number && data.price >= 0
+        && data.imageUrl is string && data.imageUrl.size() <= 2000000
+        && data.category is string && data.category.size() <= 50
+        && data.createdAt == existing().createdAt
+        && data.updatedAt == request.time;
+    }
+    
+    function isValidAdminCreate(data) {
+      return data.keys().hasAll(['email', 'createdAt'])
+        && data.keys().size() == 2
+        && data.email is string && data.email.size() <= 200
+        && data.createdAt == request.time;
+    }
+
+    // Collections rules
+
+    match /products/{productId} {
+      // Anyone can read products
+      allow get, list: if true;
+
+      // Only admins can create, update, delete
+      allow create: if isAdmin() && isValidProductCreate(incoming());
+
+      allow update: if isAdmin() && isValidProductUpdate(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'price', 'imageUrl', 'category', 'updatedAt']);
+
+      allow delete: if isAdmin();
+    }
+
+    match /admins/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      
+      // Admins can add other admins, or the bootstrapped admin can add themselves
+      allow create: if isSignedIn() 
+        && (isAdmin() || request.auth.token.email == "benioudrenmahfoud4@gmail.com") 
+        && request.auth.uid == userId
+        && isValidId(userId)
+        && isValidAdminCreate(incoming());
+        
+      allow update, delete: if false; // Immutable admins
+    }
+  }
+}

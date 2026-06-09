@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Carthena",
+  "description": "Luxury clothing boutique located in Salamendre, Mostaganem.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
